@@ -241,7 +241,7 @@ Please respond as a culturally sensitive Omani Arabic therapist.
             "text": cleaned_response,
             "emotional_state": detected_emotion,
             "techniques_used": techniques,
-            "confidence": 0.8,  # Would be calculated based on model certainty
+            "confidence": 0.8,
             "cultural_appropriateness": self._check_cultural_appropriateness(cleaned_response)
         }
 
@@ -365,7 +365,7 @@ Please respond as a culturally sensitive Omani Arabic therapist.
             response = await self._call_ollama(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                temperature=0.1,  # Low temperature for consistent analysis
+                temperature=0.1,
                 max_tokens=100
             )
             
@@ -387,7 +387,6 @@ Please respond as a culturally sensitive Omani Arabic therapist.
     def _extract_crisis_level(self, analysis: str) -> int:
         """Extract crisis level from analysis"""
         
-        # Look for numerical indicators
         import re
         numbers = re.findall(r'\d+', analysis)
         
