@@ -253,13 +253,13 @@ class SafetyService:
         """Analyze message for crisis-indicating patterns"""
         
         patterns = {
-            "finality_statements": 0,    # "never again", "last time"
-            "goodbye_messages": 0,       # farewell indicators
-            "past_tense_future": 0,      # talking about future in past tense
-            "extreme_language": 0,       # "always", "never", "worst"
-            "isolation_expressions": 0,  # expressions of complete isolation
-            "worthlessness": 0,          # expressions of no self-worth
-            "burden_statements": 0       # feeling like a burden
+            "finality_statements": 0,
+            "goodbye_messages": 0,
+            "past_tense_future": 0,
+            "extreme_language": 0,
+            "isolation_expressions": 0,
+            "worthlessness": 0,
+            "burden_statements": 0
         }
         
         message_lower = message.lower()
@@ -751,8 +751,6 @@ class SafetyService:
 
     def _calculate_intervention_success_rate(self) -> float:
         """Calculate success rate of interventions (placeholder)"""
-        # This would be calculated based on follow-up data
-        # For now, return a placeholder
         return 0.85
 
     def _calculate_escalation_rate(self, crisis_stats: Dict[str, Any]) -> float:
