@@ -13,9 +13,7 @@ from openai import OpenAI
 import logging, datetime
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# -------------------------------------------------------------------
 # ENV
-# -------------------------------------------------------------------
 load_dotenv(".env")
 AZ_REGION   = os.getenv("AZURE_SPEECH_REGION", "uaenorth")
 AZ_KEY      = os.getenv("AZURE_SPEECH_KEY")
@@ -29,9 +27,7 @@ CODE_SWITCHING = os.getenv("CODE_SWITCHING","on").lower() == "on"  # <- feature 
 
 oai: Optional[OpenAI] = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# -------------------------------------------------------------------
 # APP
-# -------------------------------------------------------------------
 app = FastAPI(title="Omani Therapist Voice")
 app.add_middleware(
     CORSMiddleware,
@@ -49,9 +45,9 @@ SAFE_HEADERS = {
 }
 
 PHI_PATTERNS = [
-    r"\b\d{9,16}\b",                  # generic MRN/ID/phone spill
-    r"\b(?:\d{3}-?\d{2}-?\d{4})\b",   # SSN-like
-    r"\b[\w\.-]+@[\w\.-]+\.\w+\b",    # emails
+    r"\b\d{9,16}\b",
+    r"\b(?:\d{3}-?\d{2}-?\d{4})\b", 
+    r"\b[\w\.-]+@[\w\.-]+\.\w+\b",  
 ]
 
 def redact(text: str) -> str:
@@ -70,9 +66,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# -------------------------------------------------------------------
 # Prompts / Safety / Culture
-# -------------------------------------------------------------------
 SYS_AR = (
     "أنت معالج/ـة نفسي/ة عماني/ة باللهجة العُمانية. كن موجزاً (٢–٣ جمل) واختم بسؤال متابعة واحد. "
     "استخدم تقنيات مثبتة بالدليل حسب الحاجة: الإنصات النشط، التحقق/التطبيع، صياغة معرفية مبسطة (CBT)، "
@@ -123,9 +117,7 @@ ISLAMIC_COPING_BY_EMOTION = {
     "stressed": "توكل على الله وخذ الأمور خطوة خطوة. سنضع خطة صغيرة معًا.",
 }
 
-# -------------------------------------------------------------------
 # Helpers: language, safety, emotion, culture, code-switch spans
-# -------------------------------------------------------------------
 def contains_arabic(text: str) -> bool:
     return any('\u0600' <= ch <= '\u06FF' for ch in text or "")
 
@@ -196,7 +188,7 @@ async def openai_moderation_block(text: str) -> Optional[str]:
     except Exception:
         return None
 
-# --------- Code-switching utilities (script spans + SSML) ----------
+#Code-switching utilities (script spans + SSML
 AR_RANGE = ('\u0600', '\u06FF')
 
 def _is_ar(ch: str) -> bool:
@@ -209,7 +201,7 @@ def split_by_script_inline(text: str):
     """
     if not text: return []
     spans = []
-    # seed by first strong char
+
     cur_lang = "ar" if any(_is_ar(c) for c in text[:8]) else "en"
     buf = []
     for ch in text:
@@ -221,7 +213,6 @@ def split_by_script_inline(text: str):
             buf.append(ch)
     if buf: spans.append({"lang": cur_lang, "text": "".join(buf)})
 
-    # merge trivial flips (spaces/punct)
     merged = []
     for s in spans:
         if merged and s["lang"] == merged[-1]["lang"]:
@@ -272,9 +263,7 @@ def tts_via_rest_ssml(ssml: str) -> bytes:
     r.raise_for_status()
     return r.content
 
-# -------------------------------------------------------------------
 # Azure Speech: dual-language STT + per-language TTS
-# -------------------------------------------------------------------
 def _speech_cfg_recog():
     assert AZ_KEY, "AZURE_SPEECH_KEY missing"
     cfg = speechsdk.SpeechConfig(subscription=AZ_KEY, region=AZ_REGION)
@@ -309,7 +298,6 @@ async def stt_from_wav_bytes_autolang(wav_bytes: bytes) -> Dict[str, str]:
     res = await asyncio.get_event_loop().run_in_executor(None, reco.recognize_once)
 
     if res.reason == speechsdk.ResultReason.RecognizedSpeech:
-        # Extract detected locale
         lang_result = res.properties.get(
             speechsdk.PropertyId.SpeechServiceConnection_AutoDetectSourceLanguageResult
         ) or ""
@@ -317,7 +305,7 @@ async def stt_from_wav_bytes_autolang(wav_bytes: bytes) -> Dict[str, str]:
         return {"text": res.text or "", "lang": lang_code}
 
     if res.reason == speechsdk.ResultReason.NoMatch:
-        return {"text": "", "lang": "ar"}  # default
+        return {"text": "", "lang": "ar"}
 
     details = getattr(res.cancellation_details, "error_details", "")
     raise RuntimeError(f"STT failed: {res.reason} {details}")
@@ -369,7 +357,6 @@ async def tts_mixed_or_plain(text: str, lang: str, spans=None) -> bytes:
     """
     if CODE_SWITCHING and spans and len([s for s in spans if (s.get("text") or "").strip()]) > 1:
         ssml = build_mixed_ssml(spans, default_lang=lang)
-        # Try SDK SSML first
         try:
             cfg = _speech_cfg_tts(pick_voice(lang))
             tmp = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4().hex}.mp3")
@@ -381,14 +368,10 @@ async def tts_mixed_or_plain(text: str, lang: str, spans=None) -> bytes:
                     return f.read()
         except Exception as e:
             print(f"[SDK SSML] falling back to REST: {e}")
-        # REST SSML fallback
         return await asyncio.to_thread(tts_via_rest_ssml, ssml)
-    # Plain path
     return await tts_to_mp3_bytes(text, lang)
 
-# -------------------------------------------------------------------
 # LLM
-# -------------------------------------------------------------------
 async def gpt_reply(user_text: str, history: List[Dict], lang: str) -> str:
     if not oai:
         return "أفهمك. خلّنا نفهم أكثر: متى بدأ هذا الشعور؟ وما المواقف التي تزيده؟" if lang == "ar" \
@@ -398,9 +381,7 @@ async def gpt_reply(user_text: str, history: List[Dict], lang: str) -> str:
     res = oai.chat.completions.create(model="gpt-4o-mini", messages=msgs, temperature=0.4, max_tokens=180)
     return (res.choices[0].message.content or "").strip()
 
-# -------------------------------------------------------------------
 # HTTP
-# -------------------------------------------------------------------
 @app.get("/health", tags=["misc"])
 def health():
     return {"status":"ok","region":AZ_REGION,"voice_ar":VOICE_AR,"voice_en":VOICE_EN,"openai":bool(oai),"code_switching":CODE_SWITCHING}
@@ -416,7 +397,7 @@ async def tts_endpoint(body: TTSIn):
 async def stt_endpoint(file: UploadFile = File(...)):
     data = await file.read()
     res = await stt_from_wav_bytes_autolang(data)
-    return res  # {"text":..., "lang":"ar"|"en"}
+    return res
 
 class ChatIn(BaseModel): user_text: str
 @app.post("/chat", tags=["chat"])
@@ -437,7 +418,7 @@ async def chat_endpoint(body: ChatIn):
 
     a = await gpt_reply(u, history=[], lang=lang)
     emo = detect_emotion(u, lang)
-    a = maybe_add_religious_sensitivity(a, emo, u, lang)  # only affects Arabic
+    a = maybe_add_religious_sensitivity(a, emo, u, lang)
     cult = assess_culture(a)
 
     # Code-switch TTS spans are driven by assistant text itself (if mixed)
@@ -452,9 +433,7 @@ async def chat_endpoint(body: ChatIn):
         "mixed_spans": spans_bot  # useful for clients if needed
     }
 
-# -------------------------------------------------------------------
 # WebSocket (voice+text)
-# -------------------------------------------------------------------
 @app.websocket("/ws/{session_id}")
 async def ws_handler(ws: WebSocket, session_id: str):
     await ws.accept()
@@ -558,7 +537,7 @@ async def ws_handler(ws: WebSocket, session_id: str):
                 try:
                     wav_b64 = data["audio_data"]
                     wav = base64.b64decode(wav_b64)
-                    stt = await stt_from_wav_bytes_autolang(wav)  # {"text":..., "lang":...}
+                    stt = await stt_from_wav_bytes_autolang(wav)
                     user_text, lang = stt.get("text",""), stt.get("lang","ar")
                     await respond(user_text, lang)
                 except Exception as e:
