@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.dist/
+build/
+.eggs/
+
+# Virtual envs / local tooling
+.venv/
+venv/
+.env
+.env.*
+*.code-workspace
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Backups / bundles / dumps
+*.bak
+*.log
+logs/
+
+# Node/web (if any)
+node_modules/

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>المعالج النفسي العماني الصوتي</title>
+  <style>/* (your CSS unchanged) */</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎤 المعالج النفسي العماني</h1>
+      <p>دعم نفسي بالصوت باللهجة العمانية</p>
+    </div>
+
+    <div id="emergency-banner" class="emergency-banner">
+      <strong>⚠️ تم رصد حالة طوارئ</strong><br/>إذا كنت في خطر فوري، اتصل بالرقم 999
+    </div>
+    <div id="emergency-contacts" class="emergency-contacts">
+      <strong>📞 أرقام المساعدة:</strong><br/>خط المساعدة النفسية: 80077<br/>الطوارئ: 999
+    </div>
+
+    <div id="status" class="status connecting">
+      <div class="loading"></div> جاري الاتصال بالخادم...
+    </div>
+
+    <div class="voice-controls">
+      <button id="recordButton" class="voice-button" disabled>🎤</button>
+      <div class="help-text">اضغط للتسجيل والتحدث</div>
+    </div>
+
+    <div class="text-controls">
+      <input type="text" id="textInput" class="text-input" placeholder="أو اكتب رسالتك هنا..." disabled/>
+      <button id="sendButton" class="send-button" disabled>إرسال</button>
+    </div>
+
+    <div id="conversation" class="conversation">
+      <div class="message bot">
+        مرحباً بك. أنا هنا للاستماع إليك ومساعدتك. كيف حالك اليوم؟
+      </div>
+    </div>
+
+    <div class="help-text">💡 يمكنك التحدث بالصوت أو الكتابة. جميع المحادثات سرية ومحمية.</div>
+  </div>
+
+<script>
+  const API_HOST = "localhost:8000"; // change only if your backend uses a different host:port
+
+  // inside your class, replace connect() with:
+  connect() {
+    const proto = (location.protocol === "https:") ? "wss" : "ws";
+    const wsUrl = `${proto}://${API_HOST}/ws/${this.sessionId}`;
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      this.updateStatus('connected', '✅ متصل - جاهز للمحادثة');
+      this.enable();
+    };
+    this.ws.onclose = () => {
+      this.updateStatus('error', '❌ انقطع الاتصال - إعادة المحاولة...');
+      this.disable();
+      setTimeout(() => this.connect(), 2000);
+    };
+    this.ws.onerror = (e) => {
+      console.error("WS error:", e);
+      this.updateStatus('error','❌ خطأ في الاتصال');
+      this.disable();
+    };
+    this.ws.onmessage = (ev) => this.handleMessage(JSON.parse(ev.data));
+  }
+</script>
+
+</body>
+</html>

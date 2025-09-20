@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+requests
+azure-cognitiveservices-speech
+openai
+pydantic-settings==2.4.0
+python-multipart

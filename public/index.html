@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>المعالج النفسي العماني الصوتي</title>
+
+  <style>
+    :root{
+      --bg: #0f172a; --panel: #111827; --panel-2: #0b1220;
+      --text: #e5e7eb; --muted: #9ca3af; --brand: #22c55e;
+      --danger: #ef4444; --card-shadow: 0 10px 30px rgba(0,0,0,.35); --radius: 16px;
+    }
+    *{box-sizing:border-box} /* 1) Body: no full-page flex; let the page scroll naturally */
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      background: radial-gradient(1200px 800px at 20% -10%, #0b1324 0, transparent 60%),
+                  radial-gradient(1200px 800px at 120% 30%, #0a1b2c 0, transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial;
+      padding:24px;
+      /* remove: display:flex; align-items:center; justify-content:center; */
+    }
+
+    /* 2) Shell: center via margin, pin to viewport height for predictable scroll */
+    .shell{
+      width:100%;
+      max-width:960px;
+      height: min(92vh, 900px);          /* viewport-based height */
+      margin: 0 auto;                    /* center horizontally */
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.06);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+      display:flex;
+      flex-direction: column;
+    }
+
+    /* 3) Conversation: the critical fixes are min-height:0 and momentum scrolling */
+    .conversation{
+      flex: 1;
+      min-height: 0;                     /* <-- allows child to shrink and scroll */
+      overflow: auto;                    /* scroll inside this pane */
+      -webkit-overflow-scrolling: touch; /* smooth iOS scrolling */
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      background:
+        radial-gradient(900px 600px at 100% 10%, rgba(56,189,248,.05) 0, transparent 60%),
+        radial-gradient(900px 600px at -10% 100%, rgba(34,197,94,.05) 0, transparent 60%),
+        var(--panel-2);
+      scroll-behavior: smooth;
+      position: relative;
+    }
+
+    .header{ padding:20px 24px; background:linear-gradient(180deg,rgba(34,197,94,.12),rgba(34,197,94,0));
+      border-bottom:1px solid rgba(255,255,255,.06); display:flex; align-items:center; gap:16px; justify-content:space-between; }
+    .brand{ display:flex; align-items:center; gap:12px }
+    .brand h1{ margin:0; font-size:20px; font-weight:700 } .brand p{ margin:2px 0 0; color:var(--muted); font-size:13px }
+    .status{ font-size:13px; color:var(--muted); padding:2px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.06);
+      background:rgba(0,0,0,.25); white-space:nowrap }
+    .status.connected{ color:#86efac; border-color:rgba(134,239,172,.25) } .status.error{ color:#fecaca; border-color:rgba(248,113,113,.25) }
+    .emergency{ display:none; gap:10px; padding:10px 16px; margin:12px 24px 0; border-radius:12px;
+      border:1px solid rgba(255,255,255,.06); background:linear-gradient(180deg,rgba(239,68,68,.12),rgba(239,68,68,0)); color:#fecaca; font-size:14px }
+    .emergency.show{display:flex}
+    .contacts{ display:none; margin:10px 24px 0; padding:10px 16px; border-radius:12px; border:1px dashed rgba(255,255,255,.12); color:var(--muted); font-size:14px }
+    .contacts.show{display:block}
+    .conversation{ position:relative; flex:1; overflow:auto; padding:24px; display:flex; flex-direction:column; gap:14px;
+      background: radial-gradient(900px 600px at 100% 10%, rgba(56,189,248,.05) 0, transparent 60%),
+                 radial-gradient(900px 600px at -10% 100%, rgba(34,197,94,.05) 0, transparent 60%), var(--panel-2);
+      scroll-behavior:smooth; }
+    .msg{ display:flex; gap:12px; align-items:flex-end; max-width:85%; animation:fadein .2s ease }
+    .msg.bot{align-self:flex-start; direction:rtl} .msg.user{align-self:flex-end; direction:rtl}
+    .avatar{ width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,#22c55e,#0ea5e9);
+      display:flex; align-items:center; justify-content:center; font-size:18px; color:white; flex:0 0 36px }
+    .avatar.user{ background:linear-gradient(135deg,#334155,#1f2937) }
+    .bubble{ max-width:100%; padding:12px 14px; border-radius:14px; border:1px solid rgba(255,255,255,.06);
+      line-height:1.6; font-size:15px; word-wrap:break-word; white-space:pre-wrap; backdrop-filter:blur(4px) }
+    .bot .bubble{ background:rgba(14,165,233,.12); border-color:rgba(14,165,233,.25) }
+    .user .bubble{ background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.08) }
+    .audio-player{ margin-top:6px } .audio-player audio{ width:100%; height:32px }
+    .footer{ padding:14px; border-top:1px solid rgba(255,255,255,.06); background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center }
+    .input{ display:flex; gap:8px; width:100%; max-width:820px }
+    .text-input{ flex:1; padding:12px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.25); color:var(--text); outline:none }
+    .text-input::placeholder{ color:#8b91a0 }
+    .send-button,.voice-button{ padding:10px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.08);
+      background:linear-gradient(180deg,rgba(34,197,94,.18),rgba(34,197,94,.10)); color:white; cursor:pointer; min-width:60px; transition:.15s ease }
+    .send-button:disabled,.voice-button:disabled{ opacity:.5; cursor:not-allowed }
+    .send-button:hover:not(:disabled),.voice-button:hover:not(:disabled){ transform:translateY(-1px); background:linear-gradient(180deg,rgba(34,197,94,.22),rgba(34,197,94,.12))}
+    .voice-button.recording{ background:linear-gradient(180deg,rgba(239,68,68,.2),rgba(239,68,68,.12)); border-color:rgba(239,68,68,.35) }
+    .row{ width:100%; max-width:820px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 14px 12px; color:var(--muted); font-size:13px }
+    .row label{ display:flex; align-items:center; gap:8px; cursor:pointer }
+    .scroll-bottom{ position:absolute; left:50%; transform:translateX(-50%); bottom:12px; z-index:5; display:none; gap:8px; align-items:center;
+      padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(15,23,42,.75); color:var(--text); font-size:13px; cursor:pointer; box-shadow:0 8px 24px rgba(0,0,0,.25); backdrop-filter:blur(6px) }
+    .scroll-bottom.show{display:flex}
+    @keyframes fadein{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+    @media (max-width:600px){ .msg{max-width:92%} .header{flex-direction:column; align-items:flex-start; gap:6px} }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+    <div class="header">
+      <div class="brand">
+        <div class="avatar">🎤</div>
+        <div>
+          <h1>المعالج النفسي العماني</h1>
+          <p>دعم نفسي بالصوت باللهجة العمانية</p>
+        </div>
+      </div>
+      <div id="status" class="status">جاري الاتصال بالخادم…</div>
+    </div>
+
+    <div id="emergency-banner" class="emergency">
+      <strong>⚠️ تم رصد حالة طوارئ</strong>
+      <span>إذا كنت في خطر فوري، اتصل بالرقم 999</span>
+    </div>
+    <div id="emergency-contacts" class="contacts">
+      <strong>📞 أرقام المساعدة:</strong> خط المساعدة النفسية: 80077 — الطوارئ: 999
+    </div>
+
+    <div id="conversation" class="conversation">
+      <button id="scrollBottom" class="scroll-bottom">⬇️ أحدث الرسائل</button>
+
+      <div class="msg bot">
+        <div class="avatar">🟢</div>
+        <div class="bubble">مرحباً بك. أنا هنا للاستماع إليك ومساعدتك. كيف حالك اليوم؟</div>
+      </div>
+    </div>
+
+      <div class="row">
+        <label><input type="checkbox" id="autoMode"> تفعيل المحادثة التلقائية</label>
+        <label><input type="checkbox" id="voiceReplies"> 🔊 رد صوتي</label>
+        <span>💡 خصوصيتك مهمة لنا.</span>
+      </div>
+
+
+    <div class="footer">
+      <div class="input">
+        <button id="recordButton" class="voice-button" disabled>🎤</button>
+        <input type="text" id="textInput" class="text-input" placeholder="أو اكتب رسالتك هنا..." disabled/>
+        <button id="sendButton" class="send-button" disabled>إرسال</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+class OmaniTherapistClient {
+  constructor() {
+    this.ws = null;
+    this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+
+    // audio capture
+    this.audioCtx = null; this.mediaStream = null; this.processor = null; this.source = null;
+
+    // manual turn buffer
+    this.buffers = []; this.len = 0;
+
+    // AUTO VAD state
+    this.auto = false;
+    this.vadBuffers = []; this.vadLen = 0;
+    this.talking = false;
+    this.frameMs = 4096 / 16000 * 1000; // ~256ms @16kHz
+    this.minTalkMs = 700;
+    this.silenceMs = 1900;
+    this.energyThresh = 0.003;
+    this.calibrated = false;
+    this.calibMs = 700;
+    this.speechArmFrames = 0;
+    this.minSpeechFrames = 3;
+    this.silenceAccum = 0;
+    this.talkAccum = 0;
+
+    // playback gating (half-duplex)
+    this.blockMic = false;
+    this._gateTimer = null;
+
+    // audio output
+    this.outputUnlocked = false;
+    this.player = new Audio();
+    this.player.autoplay = true;
+    this.player.controls = false;
+    this.player.setAttribute('playsinline','');
+
+    // scroll state
+    this.stickBottom = true;
+    this.newMsgSinceScroll = false;
+
+    this.setupElements();
+    this.connect();
+  }
+
+  setupElements() {
+    this.statusEl = document.getElementById('status');
+    this.recordBtn = document.getElementById('recordButton');
+    this.textInput = document.getElementById('textInput');
+    this.sendBtn = document.getElementById('sendButton');
+    this.conv = document.getElementById('conversation');
+    this.emBanner = document.getElementById('emergency-banner');
+    this.emContacts = document.getElementById('emergency-contacts');
+    this.scrollBtn = document.getElementById('scrollBottom');
+    this.autoBox  = document.getElementById('autoMode');
+    this.voiceBox = document.getElementById('voiceReplies');
+    this.lastTurnWasText = false;   // <-- track the origin of the last user turn
+
+    // scrolling behavior
+    this.conv.addEventListener('scroll', () => {
+      const nearBottom = (this.conv.scrollHeight - this.conv.scrollTop - this.conv.clientHeight) < 80;
+      this.stickBottom = nearBottom;
+      if (nearBottom) {
+        this.newMsgSinceScroll = false;
+        this.scrollBtn.classList.remove('show');
+      }
+    });
+    this.scrollBtn.addEventListener('click', () => {
+      this.conv.scrollTop = this.conv.scrollHeight;
+      this.newMsgSinceScroll = false;
+      this.scrollBtn.classList.remove('show');
+    });
+
+    const unlock = () => {
+      if (!this.outputUnlocked) {
+        this.outputUnlocked = true;
+        try { this.player.muted = false; this.player.play().catch(()=>{}); } catch {}
+      }
+    };
+    this.recordBtn.addEventListener('click', () => { unlock(); this.toggleRecording(); });
+    this.sendBtn.addEventListener('click', () => { unlock(); this.sendTextMessage(); });
+    this.textInput.addEventListener('keypress', e => { if (e.key === 'Enter') { unlock(); this.sendTextMessage(); } });
+
+    if (this.autoBox) {
+      this.autoBox.addEventListener('change', () => {
+        if (this.autoBox.checked) this.startAuto(); else this.stopAuto();
+      });
+    }
+
+
+    if (this.autoBox) {
+      this.autoBox.addEventListener('change', () => {
+        // when auto chat is on, ensure voice replies are on too
+        if (this.voiceBox) this.voiceBox.checked = this.autoBox.checked;
+
+        if (this.autoBox.checked) this.startAuto();
+        else this.stopAuto();
+      });
+    }
+
+
+    // playback gate hooks
+    this.player.addEventListener('play', () => this._beginPlaybackGate());
+    this.player.addEventListener('ended', () => this._endPlaybackGate());
+  }
+
+  updateStatus(type, text){ this.statusEl.className = `status ${type}`; this.statusEl.textContent = text; }
+  enable(){ this.recordBtn.disabled = this.textInput.disabled = this.sendBtn.disabled = false; }
+  disable(){ this.recordBtn.disabled = this.textInput.disabled = this.sendBtn.disabled = true; }
+
+  connect() {
+    const proto = (location.protocol === "https:") ? "wss" : "ws";
+    const wsUrl = `${proto}://${location.host}/ws/${this.sessionId}`;
+    this.ws = new WebSocket(wsUrl);
+    this.ws.onopen   = () => { this.updateStatus('connected', '✅ متصل - جاهز للمحادثة'); this.enable(); };
+    this.ws.onclose  = () => { this.updateStatus('error','❌ انقطع الاتصال - إعادة المحاولة...'); this.disable(); setTimeout(()=>this.connect(), 1500); };
+    this.ws.onerror  = e => { console.error(e); this.updateStatus('error','❌ خطأ في الاتصال'); this.disable(); };
+    this.ws.onmessage= ev => this.handleMessage(JSON.parse(ev.data));
+  }
+
+  // ----------------- Manual push-to-talk -----------------
+  async toggleRecording(){ if (this.processor) await this.stopManual(); else await this.startManual(); }
+
+  async startManual(){
+    await this._ensureAudioGraph();
+    this.buffers = []; this.len = 0;
+    this.processor.onaudioprocess = (e) => {
+      const ch = e.inputBuffer.getChannelData(0);
+      this.buffers.push(new Float32Array(ch)); this.len += ch.length;
+    };
+    this.recordBtn.classList.add('recording'); this.recordBtn.textContent = '🛑';
+    this.updateStatus('connected','🎤 جاري التسجيل...');
+    this._mutePlayerForRecording();
+  }
+
+  async stopManual(){
+    const wavB64 = this._flushToWavB64(this.buffers, this.len);
+    await this._teardownAudioGraph();
+    this.recordBtn.classList.remove('recording'); this.recordBtn.textContent = '🎤';
+    this.updateStatus('connected','⏳ جاري تحليل الرسالة...');
+    this._restorePlayerAfterRecording();
+    this.ws.send(JSON.stringify({ type: 'audio_chunk', audio_data: wavB64, prefer_voice: true }));
+
+  }
+
+  // ----------------- AUTO mode with calibration + hysteresis -----------------
+  async startAuto(){
+    await this._ensureAudioGraph();
+    this.auto = true;
+    this.calibrated = false;
+    this.vadBuffers = []; this.vadLen = 0;
+    this.talking = false; this.silenceAccum = 0; this.talkAccum = 0;
+    this.speechArmFrames = 0;
+
+    this.recordBtn.classList.add('recording');
+    this.updateStatus('connected','🎙️ محادثة تلقائية — جاري معايرة الضجيج…');
+
+    // simple calibration
+    let calibSum = 0, calibCount = 0, calibMs = 0;
+
+    this.processor.onaudioprocess = (e) => {
+      if (this.blockMic) { // playback gate
+        this.talking = false; this.silenceAccum = 0; this.talkAccum = 0; this.speechArmFrames = 0;
+        return;
+      }
+      const ch = e.inputBuffer.getChannelData(0);
+      let sum = 0; for (let i=0;i<ch.length;i++){ const s = ch[i]; sum += s*s; }
+      const rms = Math.sqrt(sum / ch.length);
+
+      if (!this.calibrated) {
+        calibSum += rms; calibCount++; calibMs += this.frameMs;
+        if (calibMs >= this.calibMs) {
+          const baseline = (calibSum / Math.max(1,calibCount));
+          this.energyThresh = Math.max(0.002, baseline * 3.5);
+          this.calibrated = true;
+          this.updateStatus('connected','🎙️ تكلّم وسيتم الإرسال تلقائياً بعد الصمت…');
+        }
+        return;
+      }
+
+      // VAD with hysteresis
+      if (rms > this.energyThresh) {
+        this.speechArmFrames++;
+        if (!this.talking && this.speechArmFrames >= this.minSpeechFrames) {
+          this.talking = true;
+          this.talkAccum = 0; this.silenceAccum = 0;
+          this.vadBuffers = []; this.vadLen = 0;
+        }
+      } else {
+        this.speechArmFrames = Math.max(0, this.speechArmFrames - 1);
+      }
+
+      if (this.talking) {
+        this.vadBuffers.push(new Float32Array(ch)); this.vadLen += ch.length;
+        this.talkAccum += this.frameMs;
+        if (rms <= this.energyThresh) this.silenceAccum += this.frameMs; else this.silenceAccum = 0;
+
+        if (this.talkAccum >= this.minTalkMs && this.silenceAccum >= this.silenceMs) {
+          const wavB64 = this._flushToWavB64(this.vadBuffers, this.vadLen);
+          this.talking = false; this.silenceAccum = 0; this.talkAccum = 0; this.speechArmFrames = 0;
+          this.updateStatus('connected','⏳ جاري تحليل الرسالة...');
+          this.ws.send(JSON.stringify({ type: 'audio_chunk', audio_data: wavB64 }));
+        }
+      }
+    };
+  }
+
+  async stopAuto(){
+    this.auto = false;
+    await this._teardownAudioGraph();
+    this.recordBtn.classList.remove('recording');
+    this.updateStatus('connected','✅ متصل - جاهز للمحادثة');
+  }
+
+  // ----------------- Text path -----------------
+  sendTextMessage(){
+    const text = (this.textInput.value || '').trim();
+    if (!text) return;
+    this.addMsg('user', text);
+    this.textInput.value = '';
+    this.updateStatus('connected','⏳ جاري تحليل الرسالة...');
+    this.ws.send(JSON.stringify({
+      type: 'text_message',
+      message: text,
+      prefer_voice: !!(this.voiceBox && this.voiceBox.checked) // usually false
+    }));
+  }
+
+
+  // ----------------- Server messages -----------------
+  handleMessage(d){
+    if (d.type === 'audio_response'){
+      if (d.transcript) this.addMsg('user', d.transcript);
+      this.addMsg('bot', d.response_text, d.audio_data);
+      this.updateStatus('connected','✅ تم الرد');
+      this.playMp3B64(d.audio_data);
+
+      if (this.auto) setTimeout(() => this.updateStatus('connected','🎙️ جاهز للاستماع…'), 150);
+      return;
+    }
+    if (d.type === 'text_response'){
+      this.addMsg('bot', d.response);
+      this.updateStatus('connected','✅ تم الرد');
+      if (this.auto) setTimeout(() => this.updateStatus('connected','🎙️ جاهز للاستماع…'), 150);
+      return;
+    }
+    if (d.type === 'crisis_alert'){
+      this.addMsg('bot', d.response);
+      this.emBanner.classList.add('show');
+      this.emContacts.classList.add('show');
+      this.updateStatus('error','⚠️ تم رصد حالة طوارئ');
+      return;
+    }
+    if (d.type === 'notice' && d.kind === 'disclaimer'){
+      this.addMsg('bot', d.text);
+      return;
+    }
+    if (d.type === 'error'){
+      this.addMsg('bot', `خطأ: ${d.message}`);
+      this.updateStatus('error','❌ حدث خطأ');
+      setTimeout(()=>this.updateStatus('connected','✅ متصل - جاهز للمحادثة'), 2500);
+    }
+  }
+
+  // ----------------- Output audio (robust, gated) -----------------
+  async playMp3B64(b64){
+    try {
+      const bytes = this._b64ToU8(b64);
+
+      // Try to estimate duration to set a safety gate timer
+      let durMs = 0;
+      try {
+        const ctx2 = new (window.AudioContext || window.webkitAudioContext)();
+        const buf = await ctx2.decodeAudioData(bytes.buffer.slice(0));
+        durMs = Math.max(0, (buf.duration || 0) * 1000);
+        ctx2.close();
+      } catch {}
+
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      this._beginPlaybackGate(durMs);
+      this.player.src = blobUrl;
+
+      this.player.play().catch(async () => {
+        // Fallback: decode & play via WebAudio
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const buf = await ctx.decodeAudioData(bytes.buffer.slice(0));
+          const src = ctx.createBufferSource();
+          src.buffer = buf; src.connect(ctx.destination);
+          this._beginPlaybackGate(buf.duration * 1000);
+          src.onended = () => { try{ctx.close();}catch{} this._endPlaybackGate(); };
+          src.start(0);
+        } catch (e) { console.warn("Playback fallback failed:", e); this._endPlaybackGate(); }
+      });
+    } catch (e) {
+      console.warn("Failed to build MP3:", e);
+      this._endPlaybackGate();
+    }
+  }
+
+  _beginPlaybackGate(durMs=0){
+    this.blockMic = true;          // pause VAD/mic processing
+    if (this._gateTimer) clearTimeout(this._gateTimer);
+    if (durMs > 0) {
+      this._gateTimer = setTimeout(() => this._endPlaybackGate(), Math.min(durMs + 200, 60_000));
+    }
+  }
+  _endPlaybackGate(){
+    this.blockMic = false;
+    if (this._gateTimer) { clearTimeout(this._gateTimer); this._gateTimer = null; }
+    if (this.auto) this.updateStatus('connected','🎙️ جاهز للاستماع…');
+  }
+
+  // ----------------- UI helpers -----------------
+  addMsg(sender, text, audioB64=null){
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${sender}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = `avatar ${sender==='user'?'user':''}`;
+    avatar.textContent = sender === 'user' ? '👤' : '🟢';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    const isArabic = /[\u0600-\u06FF]/.test(text);
+    bubble.setAttribute('dir', isArabic ? 'rtl' : 'ltr');
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(bubble);
+
+    if (audioB64){
+      // Keep controls for replay, but DO NOT auto-play — avoids 2nd audio source causing echo
+      const ap = document.createElement('div'); ap.className = 'audio-player';
+      const a = document.createElement('audio'); a.controls = true; a.setAttribute('playsinline','');
+      a.src = `data:audio/mpeg;base64,${audioB64}`;
+      bubble.appendChild(ap); ap.appendChild(a);
+    }
+
+    this.conv.appendChild(wrap);
+
+    if (this.stickBottom) {
+      this.conv.scrollTop = this.conv.scrollHeight;
+    } else {
+      this.newMsgSinceScroll = true;
+      this.scrollBtn.classList.add('show');
+    }
+  }
+
+  _mutePlayerForRecording(){
+    this._prevPlayerMuted = this.player.muted;
+    this._prevPlayerVolume = this.player.volume;
+    this.player.muted = true;
+    this.player.volume = 0;
+    try { this.player.pause(); } catch {}
+  }
+
+  _restorePlayerAfterRecording(){
+    this.player.muted = (this._prevPlayerMuted ?? false);
+    this.player.volume = (this._prevPlayerVolume ?? 1);
+  }
+
+  // ----------------- Audio graph helpers -----------------
+  async _ensureAudioGraph(){
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation:{ideal:true},
+        noiseSuppression:{ideal:true},
+        autoGainControl:{ideal:true}
+      }
+    });
+    this.source = this.audioCtx.createMediaStreamSource(this.mediaStream);
+    this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
+    this.source.connect(this.processor);
+
+    // silent sink: keep node graph alive without routing mic to speakers
+    const sink = this.audioCtx.createGain();
+    sink.gain.value = 0.0;
+    this.processor.connect(sink);
+    sink.connect(this.audioCtx.destination);
+  }
+
+  async _teardownAudioGraph(){
+    try { this.processor && (this.processor.onaudioprocess = null); } catch {}
+    try { this.processor && this.processor.disconnect(); } catch {}
+    try { this.source && this.source.disconnect(); } catch {}
+    try { this.mediaStream && this.mediaStream.getTracks().forEach(t=>t.stop()); } catch {}
+    try { this.audioCtx && this.audioCtx.close(); } catch {}
+    this.processor = this.source = this.mediaStream = this.audioCtx = null;
+  }
+
+  _flushToWavB64(buffers, len){
+    const pcm = this._mergeFloat32(buffers, len);
+    const wav = this._encodeWav(pcm, 16000);
+    return this._abToB64(wav.buffer);
+  }
+
+  // ----------------- Binary helpers -----------------
+  _mergeFloat32(buffers, len){ const out=new Float32Array(len); let off=0; for(const b of buffers){ out.set(b,off); off+=b.length; } return out; }
+  _encodeWav(samples, sr){
+    const buffer = new ArrayBuffer(44 + samples.length*2), view=new DataView(buffer);
+    const w=(o,s)=>{ for(let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+    w(0,'RIFF'); view.setUint32(4,36+samples.length*2,true); w(8,'WAVE'); w(12,'fmt ');
+    view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sr,true); view.setUint32(28,sr*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    w(36,'data'); view.setUint32(40, samples.length*2, true);
+    let off=44; for(let i=0;i<samples.length;i++,off+=2){ let s=Math.max(-1,Math.min(1,samples[i])); view.setInt16(off, s<0?s*0x8000:s*0x7FFF, true); }
+    return new Uint8Array(buffer);
+  }
+  _abToB64(buffer){ let bin=''; const bytes=new Uint8Array(buffer); for(let i=0;i<bytes.byteLength;i++) bin+=String.fromCharCode(bytes[i]); return btoa(bin); }
+  _b64ToU8(b64){ const bin=atob(b64); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+}
+
+document.addEventListener('DOMContentLoaded', ()=> new OmaniTherapistClient());
+</script>
+</body>
+</html>

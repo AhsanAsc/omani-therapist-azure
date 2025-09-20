@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>المعالج النفسي العماني الصوتي</title>
+  <style>/* (your CSS unchanged) */</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎤 المعالج النفسي العماني</h1>
+      <p>دعم نفسي بالصوت باللهجة العمانية</p>
+    </div>
+
+    <div id="emergency-banner" class="emergency-banner" style="display:none">
+      <strong>⚠️ تم رصد حالة طوارئ</strong><br/>إذا كنت في خطر فوري، اتصل بالرقم 999
+    </div>
+    <div id="emergency-contacts" class="emergency-contacts" style="display:none">
+      <strong>📞 أرقام المساعدة:</strong><br/>خط المساعدة النفسية: 80077<br/>الطوارئ: 999
+    </div>
+
+    <div id="status" class="status connecting">
+      <div class="loading"></div> جاري الاتصال بالخادم...
+    </div>
+
+    <div class="voice-controls">
+      <button id="recordButton" class="voice-button" disabled>🎤</button>
+      <div class="help-text">اضغط للتسجيل والتحدث</div>
+    </div>
+
+    <div class="text-controls">
+      <input type="text" id="textInput" class="text-input" placeholder="أو اكتب رسالتك هنا..." disabled/>
+      <button id="sendButton" class="send-button" disabled>إرسال</button>
+    </div>
+
+    <div id="conversation" class="conversation">
+      <div class="message bot">
+        مرحباً بك. أنا هنا للاستماع إليك ومساعدتك. كيف حالك اليوم؟
+      </div>
+    </div>
+
+    <div class="help-text" style="margin-top:8px">
+      <label>
+        <input type="checkbox" id="autoMode">
+        تفعيل المحادثة التلقائية (يتكلم ثم يرد تلقائياً)
+      </label>
+    </div>
+
+    <div class="help-text">💡 يمكنك التحدث بالصوت أو الكتابة. جميع المحادثات سرية ومحمية.</div>
+
+    <!-- Single, reusable TTS player (shared for all replies) -->
+    <audio id="ttsAudio" class="audio-player" controls style="width:100%; margin-top:8px; display:none"></audio>
+  </div>
+
+<script>
+class OmaniTherapistClient {
+  constructor() {
+    this.ws = null;
+    this.sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+
+    // audio capture
+    this.audioCtx = null; this.mediaStream = null; this.processor = null; this.source = null; this.silentGain = null;
+
+    // manual turn buffer
+    this.buffers = []; this.len = 0;
+
+    this.resumeDelayMs = 500;
+    
+    // AUTO VAD state
+    this.auto = false;
+    this.vadBuffers = []; this.vadLen = 0;
+    this.talking = false;
+    this.frameMs = 4096 / 16000 * 1000; // ~256ms @16kHz
+    this.minTalkMs = 700;
+    this.silenceMs = 1600;
+    this.energyThresh = 0.003;
+    this.calibrated = false;
+    this.calibMs = 700;
+    this.speechArmFrames = 0;
+    this.minSpeechFrames = 3;
+    this.silenceAccum = 0;
+    this.talkAccum = 0;
+
+    // audio output (single shared player)
+    this.outputUnlocked = false;
+    this.ttsAudio = document.getElementById('ttsAudio');
+    this.isPlayingTTS = false;
+
+    this.setupElements();
+    this.connect();
+  }
+
+  setupElements() {
+    this.statusEl = document.getElementById('status');
+    this.recordBtn = document.getElementById('recordButton');
+    this.textInput = document.getElementById('textInput');
+    this.sendBtn = document.getElementById('sendButton');
+    this.conv = document.getElementById('conversation');
+    this.emBanner = document.getElementById('emergency-banner');
+    this.emContacts = document.getElementById('emergency-contacts');
+    this.autoBox = document.getElementById('autoMode');
+
+    const unlock = () => {
+      if (!this.outputUnlocked) {
+        this.outputUnlocked = true;
+        try { this.ttsAudio.muted = false; this.ttsAudio.play().catch(()=>{}); } catch {}
+      }
+    };
+    this.recordBtn.addEventListener('click', () => { unlock(); this.toggleRecording(); });
+    this.sendBtn.addEventListener('click', () => { unlock(); this.sendTextMessage(); });
+    this.textInput.addEventListener('keypress', e => { if (e.key === 'Enter') { unlock(); this.sendTextMessage(); } });
+
+    if (this.autoBox) {
+      this.autoBox.addEventListener('change', () => {
+        if (this.autoBox.checked) this.startAuto(); else this.stopAuto();
+      });
+    }
+
+    // half-duplex hooks for the shared player
+    this.ttsAudio.onplay = () => {
+      this.isPlayingTTS = true;
+      this.pauseMicWhilePlaying();
+    };
+    this.ttsAudio.onended = () => {
+      this.isPlayingTTS = false;
+      // give speakers a moment to settle, then auto-resume if auto mode is enabled
+      setTimeout(() => this.resumeMicAfterPlaying(/*autoResume=*/true), this.resumeDelayMs);
+    };
+    this.ttsAudio.onpause = () => {
+      // if pause was user-initiated during playback, still try to resume mic
+      const wasPlaying = this.isPlayingTTS;
+      this.isPlayingTTS = false;
+      if (wasPlaying) setTimeout(() => this.resumeMicAfterPlaying(/*autoResume=*/true), this.resumeDelayMs);
+    };
+
+  }
+
+  updateStatus(type, text){ this.statusEl.className = `status ${type}`; this.statusEl.textContent = text; }
+  enable(){ this.recordBtn.disabled = this.textInput.disabled = this.sendBtn.disabled = false; }
+  disable(){ this.recordBtn.disabled = this.textInput.disabled = this.sendBtn.disabled = true; }
+
+  pauseMicWhilePlaying() {
+    // stop any ongoing recording mode
+    if (this.auto) this.stopAuto().catch(()=>{});
+    if (this.processor) this.stopManual().catch(()=>{});
+    this.recordBtn.disabled = true;
+    this.updateStatus('connecting', '🔈 تشغيل الرد الصوتي…');
+  }
+
+resumeMicAfterPlaying(autoResume = false) {
+  this.recordBtn.disabled = false;
+  this.updateStatus('connected', '✅ متصل - جاهز للمحادثة');
+
+  // If user had auto mode enabled, re-arm VAD automatically
+  if (autoResume && this.autoBox && this.autoBox.checked && !this.auto) {
+    // Don’t double-start if already in auto
+    this.startAuto().catch(()=>{});
+  }
+}
+
+
+  connect() {
+    const proto = (location.protocol === "https:") ? "wss" : "ws";
+    const wsUrl = `${proto}://localhost:8000/ws/${this.sessionId}`; // change host:port if needed
+    this.ws = new WebSocket(wsUrl);
+    this.ws.onopen   = () => { this.updateStatus('connected', '✅ متصل - جاهز للمحادثة'); this.enable(); };
+    this.ws.onclose  = () => { this.updateStatus('error','❌ انقطع الاتصال - إعادة المحاولة...'); this.disable(); setTimeout(()=>this.connect(), 1500); };
+    this.ws.onerror  = e => { console.error(e); this.updateStatus('error','❌ خطأ في الاتصال'); this.disable(); };
+    this.ws.onmessage= ev => this.handleMessage(JSON.parse(ev.data));
+  }
+
+  // ----------------- Manual push-to-talk -----------------
+  async toggleRecording(){
+    if (this.isPlayingTTS) return; // wait until bot finishes
+    if (this.processor) await this.stopManual(); else await this.startManual();
+  }
+
+  async startManual(){
+    await this._ensureAudioGraph();
+    this.buffers = []; this.len = 0;
+    this.processor.onaudioprocess = (e) => {
+      const ch = e.inputBuffer.getChannelData(0);
+      this.buffers.push(new Float32Array(ch)); this.len += ch.length;
+    };
+    this.recordBtn.classList.add('recording'); this.recordBtn.textContent = '🛑';
+    this.updateStatus('connecting','🎤 جاري التسجيل...');
+  }
+
+  async stopManual(){
+    const wavB64 = this._flushToWavB64(this.buffers, this.len);
+    await this._teardownAudioGraph();
+    this.recordBtn.classList.remove('recording'); this.recordBtn.textContent = '🎤';
+    this.updateStatus('connecting','⏳ جاري تحليل الرسالة...');
+    this.ws.send(JSON.stringify({ type: 'audio_chunk', audio_data: wavB64 }));
+  }
+
+  // ----------------- AUTO mode with calibration + hysteresis -----------------
+  async startAuto(){
+    if (this.isPlayingTTS) return;
+    await this._ensureAudioGraph();
+    this.auto = true;
+    this.calibrated = false;
+    this.vadBuffers = []; this.vadLen = 0;
+    this.talking = false; this.silenceAccum = 0; this.talkAccum = 0;
+    this.speechArmFrames = 0;
+
+    this.recordBtn.classList.add('recording');
+    this.updateStatus('connected','🎙️ محادثة تلقائية — جاري معايرة الضجيج…');
+
+    let calibSum = 0, calibCount = 0, calibMs = 0;
+
+    this.processor.onaudioprocess = (e) => {
+      const ch = e.inputBuffer.getChannelData(0);
+      let sum = 0; for (let i=0;i<ch.length;i++){ const s = ch[i]; sum += s*s; }
+      const rms = Math.sqrt(sum / ch.length);
+
+      if (!this.calibrated) {
+        calibSum += rms; calibCount++; calibMs += this.frameMs;
+        if (calibMs >= this.calibMs) {
+          const baseline = (calibSum / Math.max(1,calibCount));
+          this.energyThresh = Math.max(0.002, baseline * 3.5);
+          this.calibrated = true;
+          this.updateStatus('connected','🎙️ تكلّم وسيتم الإرسال تلقائياً بعد الصمت…');
+        }
+        return;
+      }
+
+      if (rms > this.energyThresh) {
+        this.speechArmFrames++;
+        if (!this.talking && this.speechArmFrames >= this.minSpeechFrames) {
+          this.talking = true;
+          this.talkAccum = 0; this.silenceAccum = 0;
+          this.vadBuffers = []; this.vadLen = 0;
+        }
+      } else {
+        this.speechArmFrames = Math.max(0, this.speechArmFrames - 1);
+      }
+
+      if (this.talking) {
+        this.vadBuffers.push(new Float32Array(ch)); this.vadLen += ch.length;
+        this.talkAccum += this.frameMs;
+        if (rms <= this.energyThresh) this.silenceAccum += this.frameMs; else this.silenceAccum = 0;
+
+        if (this.talkAccum >= this.minTalkMs && this.silenceAccum >= this.silenceMs) {
+          const wavB64 = this._flushToWavB64(this.vadBuffers, this.vadLen);
+          this.talking = false; this.silenceAccum = 0; this.talkAccum = 0; this.speechArmFrames = 0;
+          this.updateStatus('connecting','⏳ جاري تحليل الرسالة...');
+          this.ws.send(JSON.stringify({ type: 'audio_chunk', audio_data: wavB64 }));
+        }
+      }
+    };
+  }
+
+  async stopAuto(){
+    this.auto = false;
+    await this._teardownAudioGraph();
+    this.recordBtn.classList.remove('recording');
+    this.updateStatus('connected','✅ متصل - جاهز للمحادثة');
+  }
+
+  // ----------------- Text path -----------------
+  sendTextMessage(){
+    if (this.isPlayingTTS) return;
+    const text = (this.textInput.value || '').trim();
+    if (!text) return;
+    this.addMsg('user', text);
+    this.textInput.value = '';
+    this.updateStatus('connecting','⏳ جاري تحليل الرسالة...');
+    this.ws.send(JSON.stringify({ type: 'text_message', message: text }));
+  }
+
+  // ----------------- Server messages -----------------
+  handleMessage(d){
+    if (d.type === 'audio_response'){
+      if (d.transcript) this.addMsg('user', d.transcript);
+      this.addMsg('bot', d.response_text);
+      this.updateStatus('connected','✅ تم الرد');
+      // route all playback through the single shared player
+      if (d.audio_data) this.playMp3B64(d.audio_data);
+      return;
+    }
+    if (d.type === 'text_response'){
+      this.addMsg('bot', d.response);
+      this.updateStatus('connected','✅ تم الرد');
+      return;
+    }
+    if (d.type === 'crisis_alert'){
+      this.addMsg('bot', d.response);
+      this.emBanner.style.display = 'block';
+      this.emContacts.style.display = 'block';
+      this.updateStatus('error','⚠️ تم رصد حالة طوارئ');
+      return;
+    }
+    if (d.type === 'error'){
+      this.addMsg('bot', `خطأ: ${d.message}`);
+      this.updateStatus('error','❌ حدث خطأ');
+      setTimeout(()=>this.updateStatus('connected','✅ متصل - جاهز للمحادثة'), 2500);
+    }
+  }
+
+  // ----------------- Output audio (single shared player) -----------------
+  playMp3B64(b64){
+    try {
+      // stop recording if active (half-duplex)
+      if (this.auto) this.stopAuto().catch(()=>{});
+      if (this.processor) this.stopManual().catch(()=>{});
+
+      const bytes = this._b64ToU8(b64);
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type: "audio/mpeg" }));
+      this.ttsAudio.style.display = 'block';
+      // reset current playback
+      try { this.ttsAudio.pause(); this.ttsAudio.currentTime = 0; } catch {}
+      this.ttsAudio.src = blobUrl;
+
+      this.ttsAudio.play().catch(async () => {
+        // Fallback: decode + play via WebAudio if autoplay is blocked
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const buf = await ctx.decodeAudioData(bytes.buffer.slice(0));
+          const src = ctx.createBufferSource();
+          src.buffer = buf; src.connect(ctx.destination); src.start(0);
+        } catch (e) { console.warn("Playback fallback failed:", e); }
+      });
+    } catch (e) { console.warn("Failed to build MP3:", e); }
+  }
+
+  // ----------------- UI helpers -----------------
+  addMsg(sender, text){
+    const wrap = document.createElement('div');
+    wrap.className = `message ${sender}`;
+    const t = document.createElement('div'); t.textContent = text; wrap.appendChild(t);
+    this.conv.appendChild(wrap);
+    this.conv.scrollTop = this.conv.scrollHeight;
+  }
+
+  // ----------------- Audio graph helpers -----------------
+  async _ensureAudioGraph(){
+    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+
+    // AEC on, NS on, AGC off; mono if available
+    this.mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        sampleRate: 16000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: false
+      }
+    });
+
+    this.source = this.audioCtx.createMediaStreamSource(this.mediaStream);
+    this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
+
+    // IMPORTANT: do NOT feed mic to speakers → route through muted gain
+    this.silentGain = this.audioCtx.createGain();
+    this.silentGain.gain.value = 0;
+
+    this.source.connect(this.processor);
+    this.processor.connect(this.silentGain);
+    this.silentGain.connect(this.audioCtx.destination);
+  }
+
+  async _teardownAudioGraph(){
+    try { if (this.processor) this.processor.onaudioprocess = null; } catch {}
+    try { this.processor && this.processor.disconnect(); } catch {}
+    try { this.source && this.source.disconnect(); } catch {}
+    try { this.silentGain && this.silentGain.disconnect(); } catch {}
+    try { this.mediaStream && this.mediaStream.getTracks().forEach(t=>t.stop()); } catch {}
+    try { this.audioCtx && this.audioCtx.close(); } catch {}
+    this.processor = this.source = this.mediaStream = this.audioCtx = this.silentGain = null;
+  }
+
+  _flushToWavB64(buffers, len){
+    const pcm = this._mergeFloat32(buffers, len);
+    const wav = this._encodeWav(pcm, 16000);
+    return this._abToB64(wav.buffer);
+  }
+
+  // ----------------- Binary helpers -----------------
+  _mergeFloat32(buffers, len){ const out=new Float32Array(len); let off=0; for(const b of buffers){ out.set(b,off); off+=b.length; } return out; }
+  _encodeWav(samples, sr){
+    const buffer = new ArrayBuffer(44 + samples.length*2), view=new DataView(buffer);
+    const w=(o,s)=>{ for(let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
+    w(0,'RIFF'); view.setUint32(4,36+samples.length*2,true); w(8,'WAVE'); w(12,'fmt ');
+    view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sr,true); view.setUint32(28,sr*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    w(36,'data'); view.setUint32(40, samples.length*2, true);
+    let off=44; for(let i=0;i<samples.length;i++,off+=2){ let s=Math.max(-1,Math.min(1,samples[i])); view.setInt16(off, s<0?s*0x8000:s*0x7FFF, true); }
+    return new Uint8Array(buffer);
+  }
+  _abToB64(buffer){ let bin=''; const bytes=new Uint8Array(buffer); for(let i=0;i<bytes.byteLength;i++) bin+=String.fromCharCode(bytes[i]); return btoa(bin); }
+  _b64ToU8(b64){ const bin=atob(b64); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+}
+
+document.addEventListener('DOMContentLoaded', ()=> new OmaniTherapistClient());
+</script>
+
+</body>
+</html>
