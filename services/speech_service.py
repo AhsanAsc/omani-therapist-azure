@@ -165,10 +165,10 @@ class SpeechService:
             kwargs = {}
             # Only pass language if the model supports it (XTTS v2 does)
             if self.tts_language:
-                kwargs["language"] = self.tts_language  # e.g., "ar"
+                kwargs["language"] = self.tts_language
 
             if self.tts_speaker_wav:
-                kwargs["speaker_wav"] = self.tts_speaker_wav  # optional voice cloning
+                kwargs["speaker_wav"] = self.tts_speaker_wav
 
             self.tts_model.tts_to_file(
                 text=text,
@@ -215,8 +215,8 @@ class SpeechService:
             audio = audio.normalize()
             
             # Set optimal parameters for speech
-            audio = audio.set_frame_rate(22050)  # Good quality, smaller size
-            audio = audio.set_channels(1)        # Mono
+            audio = audio.set_frame_rate(22050)
+            audio = audio.set_channels(1)
             
             # Apply gentle compression
             audio = audio.compress_dynamic_range(threshold=-20.0, ratio=4.0)
@@ -239,9 +239,6 @@ class SpeechService:
     async def detect_emotion_from_audio(self, audio_data: bytes) -> Dict[str, Any]:
         """Detect emotional state from audio (basic implementation)"""
         try:
-            # This is a simplified emotion detection
-            # In production, you'd use specialized models
-            
             # Convert audio to analyze
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
                 temp_file.write(audio_data)
@@ -330,7 +327,6 @@ class SpeechService:
             logger.error(f"Cleanup error: {e}")
 
     def _normalize_tts_model_name(self, name: str) -> str:
-        # Coqui expects a full model ID; a bare 'ar' is invalid.
         if name.lower() in {"ar", "arabic"}:
             logger.warning("TTS_MODEL was set to a language code ('%s'); "
                         "falling back to XTTS v2.", name)
@@ -340,7 +336,7 @@ class SpeechService:
 
 # Alternative TTS models for different scenarios
 ALTERNATIVE_TTS_MODELS = {
-    "fast": "tts_models/ar/common_voice/glow-tts",  # Faster but lower quality
-    "quality": "tts_models/ar/common_voice/tacotron2-DDC",  # Better quality
-    "multilingual": "tts_models/multilingual/multi-dataset/xtts_v2"  # Supports multiple languages
+    "fast": "tts_models/ar/common_voice/glow-tts",
+    "quality": "tts_models/ar/common_voice/tacotron2-DDC",
+    "multilingual": "tts_models/multilingual/multi-dataset/xtts_v2" 
 }
