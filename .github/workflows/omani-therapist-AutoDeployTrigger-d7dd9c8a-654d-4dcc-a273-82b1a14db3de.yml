@@ -1,40 +1,37 @@
 name: build-and-deploy
+
 on:
   push:
     branches: [ main ]
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+permissions:
+  id-token: write
+  contents: read
 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Login to Azure (portal created this secret for you when you wired GitHub)
+      # Login (SP secret JSON OR OIDC as we discussed)
       - uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Build & push image to your ACR
       - uses: azure/container-apps-deploy-action@v2
         with:
-          # --- ACR settings (MUST match your registry) ---
+          # Build + push via your real ACR:
           acrName: omanitherapistreg
           imageToBuild: omanitherapistreg.azurecr.io/omani-therapist:${{ github.sha }}
           dockerfilePath: ./Dockerfile
 
-          # --- Container App settings ---
+          # Deploy to your existing Container App:
           containerAppName: omani-therapist
           resourceGroup: Arabic_therapist
           containerAppEnvironment: managedEnvironment-Arabictherapist-990c
-          targetPort: 8000
-          ingress: external
-          location: uae-north
 
-          # Optional: env vars here or set them in the Container App UI
-          # environmentVariables: |
-          #   SECURE_MODE=true
-          #   REDACT_LOGS=true
-          # secrets: |
-          #   AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }}
-          #   OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          # App settings
+          ingress: external
+          targetPort: 8000
+          location: uae-north
