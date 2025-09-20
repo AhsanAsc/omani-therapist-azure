@@ -3,9 +3,7 @@ import azure.cognitiveservices.speech as speechsdk
 from typing import Dict, List, Optional
 from app.config import get_settings
 
-# -----------------------------
 # Internal helpers
-# -----------------------------
 def _recog_cfg() -> speechsdk.SpeechConfig:
     """
     Base recognizer config. Per-call tuning (timeouts, profanity, etc.)
@@ -31,9 +29,8 @@ def pick_voice(lang: str) -> str:
 def _locale_for(lang: str) -> str:
     return "ar-OM" if lang == "ar" else "en-US"
 
-# -----------------------------
+
 # Speech-to-Text (Auto ar/en)
-# -----------------------------
 async def stt_from_wav_autolang(wav_bytes: bytes) -> Dict[str, str]:
     """
     Auto-detect between ar-OM and en-US. Returns {"text": str, "lang": "ar"|"en"}.
@@ -55,7 +52,6 @@ async def stt_from_wav_autolang(wav_bytes: bytes) -> Dict[str, str]:
         audio_config=audio_cfg
     )
 
-    # Phrase hints: Arabic + English therapy vocabulary, hotline numbers, etc.
     try:
         phrases = [
             "CBT", "breathing", "grounding", "panic", "anxiety", "depression",
@@ -84,15 +80,13 @@ async def stt_from_wav_autolang(wav_bytes: bytes) -> Dict[str, str]:
         return {"text": res.text or "", "lang": lang}
 
     if res.reason == speechsdk.ResultReason.NoMatch:
-        # Default to Arabic if nothing recognized (keeps downstream flow stable)
         return {"text": "", "lang": "ar"}
 
     details = getattr(res.cancellation_details, "error_details", "")
     raise RuntimeError(f"STT failed: {res.reason} {details}")
 
-# -----------------------------
+
 # Text-to-Speech (plain + SSML)
-# -----------------------------
 def _tts_rest(text: str, voice: str, locale: str) -> bytes:
     """
     Plain text REST fallback TTS (MP3 16kHz mono, 32kbps).
@@ -169,9 +163,7 @@ async def tts_to_mp3(text: str, lang: str) -> bytes:
         pass
     return await asyncio.to_thread(_tts_rest, text, voice, locale)
 
-# -----------------------------
 # Code-switching TTS
-# -----------------------------
 def build_mixed_ssml(spans: List[Dict[str, str]], default_lang: str = "ar") -> str:
     """
     Build SSML with language islands. Each span: {"text": "...", "lang": "ar"|"en"}.
