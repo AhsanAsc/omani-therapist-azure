@@ -37,9 +37,6 @@ async def ws_handler(ws: WebSocket, session_id: str):
 
         start = time.perf_counter()
 
-        # Ask the conversation service for a reply.
-        # It returns a dict like: {"text", "lang", "safety", "culture", "emotion", "audio" (optional bytes)}
-        # NOTE: We do not assume it needs a prefer_voice param; we simply choose whether to send audio.
         out = await handle_turn(user_text, history)
 
         # Persist to history using the authoritative assistant text
@@ -83,11 +80,10 @@ async def ws_handler(ws: WebSocket, session_id: str):
             msg_type = data.get("type")
 
             if msg_type == "audio_chunk":
-                # Audio turns → voice reply by default (can still honor an explicit prefer_voice flag if provided)
                 want_voice = True if data.get("prefer_voice") is None else bool(data.get("prefer_voice"))
                 try:
                     wav = base64.b64decode(data["audio_data"])
-                    stt = await stt_from_wav_autolang(wav)  # {"text": ..., "lang": "ar"/"en"}
+                    stt = await stt_from_wav_autolang(wav)
                     user_text = stt.get("text", "") or ""
                     lang = stt.get("lang", "ar")
                     await respond(user_text, lang, want_voice=True if want_voice else False)
@@ -95,13 +91,12 @@ async def ws_handler(ws: WebSocket, session_id: str):
                     await ws.send_text(json.dumps({"type": "error", "message": f"audio_error: {e}"}))
 
             elif msg_type == "text_message":
-                # Typed turns → text-only unless user explicitly checks "voice replies" toggle
                 msg = (data.get("message") or "").strip()
                 if not msg:
                     await ws.send_text(json.dumps({"type": "error", "message": "empty_message"}))
                     continue
                 lang = detect_lang(msg)
-                want_voice = bool(data.get("prefer_voice"))  # typically False
+                want_voice = bool(data.get("prefer_voice"))
                 await respond(msg, lang, want_voice=want_voice)
 
             else:
