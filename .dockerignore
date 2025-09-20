@@ -1,0 +1,69 @@
+# ---- VCS and editor junk ----
+.git
+.gitignore
+.gitattributes
+.github/
+*.bundle
+*.bak
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- Python build/artifacts ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# ---- Virtual environments (local) ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- Notebooks / experiments ----
+notebooks/
+*.ipynb_checkpoints/
+
+# ---- Logs & runtime junk ----
+logs/
+*.log
+*.pid
+
+# ---- Local environment files ----
+.env
+.env.local
+.env.*.local
+
+# (Keep an example env if you have it)
+!.env.example
+
+# ---- Large local data/artifacts (customize as needed) ----
+data/
+datasets/
+media/
+tmp/
+temp/
+repo-backup-*.bundle
+
+# ---- Front-end/node (if present in future) ----
+node_modules/
+.next/
+.nuxt/
+*.map
+
+# ---- OS/Container noise ----
+Dockerfile~
+docker-compose.override.yml
