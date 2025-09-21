@@ -49,9 +49,9 @@ Culturally-adapted, **safety-first** voice therapy companion for **Omani Arabic*
 ### High-Level System
 ```mermaid
 flowchart LR
-  U[User (Web/Mobile)]-->|Opus/PCM WS| GW[FastAPI Gateway]
-  GW -->|frames| ASR[ASR Service]
-  ASR -->|partial/final text| RT[Policy Router]
+  U["User (Web/Mobile)"]-->|Opus / PCM (WS)|GW["FastAPI Gateway"]
+  GW-->ASR["ASR Service"]
+  ASR-->RT["Policy Router"]
   RT -->|scan| SAFE[Safety Engine]
   RT -->|low risk| S[Small LLM]
   RT -->|complex/risky| L[Large LLM]
