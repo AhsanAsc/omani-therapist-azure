@@ -47,7 +47,6 @@ Culturally-adapted, **safety-first** voice therapy companion for **Omani Arabic*
 ## Architecture
 
 ### High-Level System
-```mermaid
 
 flowchart LR
   U[User (Web/Mobile)]-->|Opus/PCM WS| GW[FastAPI Gateway]
