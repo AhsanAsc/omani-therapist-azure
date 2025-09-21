@@ -46,24 +46,39 @@ Culturally-adapted, **safety-first** voice therapy companion for **Omani Arabic*
 
 ## Architecture
 
-### High-Level System
+### High-Level System (Mermaid-safe syntax)
 ```mermaid
 flowchart LR
-  U["User (Web/Mobile)"]-->|Opus / PCM (WS)|GW["FastAPI Gateway"]
-  GW-->ASR["ASR Service"]
-  ASR-->RT["Policy Router"]
-  RT -->|scan| SAFE[Safety Engine]
-  RT -->|low risk| S[Small LLM]
-  RT -->|complex/risky| L[Large LLM]
-  S --> MIX[Response Mixer]
+  U["User (Web/Mobile)"]
+  GW["FastAPI Gateway"]
+  ASR["ASR Service"]
+  RT["Policy Router"]
+  SAFE["Safety Engine"]
+  S["Small LLM"]
+  L["Large LLM"]
+  MIX["Response Mixer"]
+  TTS["TTS Service"]
+  R[("Redis")]
+  LOGS[("Structured Logs")]
+  BLOB[("Blob Storage")]
+
+  U --> GW
+  GW --> ASR
+  ASR --> RT
+  RT --> SAFE
+  RT --> S
+  RT --> L
+  S --> MIX
   L --> MIX
   SAFE --> MIX
-  MIX --> TTS[TTS Service]
-  TTS -->|audio stream| U
-  GW <-->|session| R[(Redis)]
-  GW --> LOGS[(Structured Logs)]
-  LOGS --> BLOB[(Blob Storage)]
+  MIX --> TTS
+  TTS --> U
+  GW <--> R
+  GW --> LOGS
+  LOGS --> BLOB
 ```
+
+> Tip: If you want edge labels, GitHub’s Mermaid requires **no space** between the arrow and the label delimiters. Example: `U-->|Opus / PCM (WS)|GW`
 
 ### Voice Turn (Latency Budget)
 ```mermaid
@@ -91,8 +106,6 @@ sequenceDiagram
   M-->>T: final text stream
   T-->>C: audio frames (first <=300ms after tokens)
 ```
-
-> **Mermaid note:** GitHub renders Mermaid by default. If preview doesn’t load locally, use VS Code extension “Markdown Preview Mermaid Support”.
 
 ---
 
@@ -135,13 +148,19 @@ omani-therapist/
 
 ## Quickstart (Local)
 ```bash
+# 1) Clone & setup
 git clone https://github.com/<you>/omani-therapist.git
 cd omani-therapist
 python -m venv .venv && source .venv/bin/activate
 pip install -r apps/api/requirements.txt
 
+# 2) Run LLMs/ASR/TTS (local dev) as needed
+# e.g., Ollama small & large; or point to remote endpoints
+
+# 3) API
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 
+# 4) Web UI
 cd apps/web && npm i && npm run dev
 ```
 
@@ -219,8 +238,10 @@ Full guide (with web sources used): `docs/06_cultural_adaptation.md` (+ Word/PDF
 
 Run:
 ```bash
+# Latency probe (WebSocket):
 python scripts/bench_lat.py --host wss://api.example.com/v1/audio/stream --dir samples/
 
+# Load (k6 WS):
 k6 run -e HOST=wss://api.example.com/v1/audio/stream -u 100 -d 10m scripts/load_k6_ws.js
 ```
 Azure Monitor (KQL) snippet is in `docs/08_performance_benchmarks.md`.
@@ -244,8 +265,10 @@ poetry run python eval/run_eval.py --config eval/config.dual.yaml
 
 CLI:
 ```bash
+# Build & push (ACR tasks)
 az acr build -r $ACR -t omani-therapist/api:$(git rev-parse --short HEAD) -f apps/api/Dockerfile .
 
+# Update revision
 az containerapp update -n $APP -g $RG \
   --image $ACR.azurecr.io/omani-therapist/api:$(git rev-parse --short HEAD)
 ```
